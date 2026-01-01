@@ -376,7 +376,6 @@
             color: white;
         }
 
-        /* Календарь */
         .calendar-wrapper {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -558,7 +557,6 @@
             color: var(--text-muted);
         }
 
-        /* Итоги */
         .totals {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -599,7 +597,6 @@
             color: var(--text-muted);
         }
 
-        /* Сотрудники */
         .employee-list {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -654,7 +651,6 @@
             flex: 1;
         }
 
-        /* Дашборд */
         .employee-dashboard {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -701,7 +697,6 @@
             border-top: 1px solid var(--border);
         }
 
-        /* Модальное окно */
         .modal {
             display: none;
             position: fixed;
@@ -814,7 +809,6 @@
             border: 1px dashed var(--border);
         }
 
-        /* Легенды */
         .legend {
             display: flex;
             flex-wrap: wrap;
@@ -837,7 +831,6 @@
             box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
         }
 
-        /* Задачи */
         .task-item {
             background-color: var(--bg-input);
             padding: 18px;
@@ -885,7 +878,6 @@
             justify-content: flex-end;
         }
 
-        /* Уведомления */
         .notification {
             position: fixed;
             top: 20px;
@@ -919,7 +911,6 @@
             background-color: var(--accent);
         }
 
-        /* Адаптивность */
         @media (max-width: 1200px) {
             .employee-list {
                 grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1024,7 +1015,6 @@
             }
         }
 
-        /* Утилиты */
         .text-center { text-align: center; }
         .mb-0 { margin-bottom: 0 !important; }
         .mt-0 { margin-top: 0 !important; }
@@ -1044,7 +1034,7 @@
     </style>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <div class="container">
@@ -1329,9 +1319,9 @@
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i>
                         <div>
-                            <strong>WorkShift Manager v2.0</strong><br>
+                            <strong>WorkShift Manager v3.0</strong><br>
                             Приложение для управления графиками смен и задачами сотрудников.<br>
-                            Все данные хранятся локально в вашем браузере.
+                            Все данные синхронизируются с облаком Firebase.
                         </div>
                     </div>
                 </div>
@@ -1380,20 +1370,20 @@
     </div>
 
     <script>
-        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И КОНСТАНТЫ ====================
+        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
         const STORAGE_KEYS = {
-            EMPLOYEES: 'shiftEmployees_v2',
-            SCHEDULES: 'shiftSchedules_v2',
-            TASKS: 'shiftTasks_v2',
-            BACKUP: 'shiftBackup_v2',
-            SETTINGS: 'shiftSettings_v2'
+            EMPLOYEES: 'shiftEmployees_v3',
+            SCHEDULES: 'shiftSchedules_v3',
+            TASKS: 'shiftTasks_v3',
+            BACKUP: 'shiftBackup_v3',
+            SETTINGS: 'shiftSettings_v3'
         };
 
         const DEFAULT_SETTINGS = {
             dayShiftHours: 12,
             nightShiftHours: 12,
             defaultHourlyRate: 500,
-            startOfWeek: 1 // 1 = Понедельник
+            startOfWeek: 1
         };
 
         const SHIFT_TYPES = {
@@ -1402,9 +1392,9 @@
             CUSTOM: { id: 'custom', name: 'Индивидуальные', color: 'var(--custom-shift)', icon: 'fas fa-user-clock' }
         };
 
-        let employees = {};      // { "Иванов И.И.": { rate: 500, color: "#58a6ff", id: "uuid" } }
-        let schedules = {};      // { "employeeId": { "2023-12-25": { hours: 12, type: "day", notes: "" } } }
-        let tasks = {};          // { "employeeId:2023-12-25": [{ text: "Task", report: "", completed: false, createdAt: timestamp }] }
+        let employees = {};
+        let schedules = {};
+        let tasks = {};
         let settings = { ...DEFAULT_SETTINGS };
         let currentDate = new Date();
         let currentEmployeeId = null;
@@ -1414,14 +1404,296 @@
             '#56d364', '#ffa657', '#6e7681', '#bc8cff'
         ];
 
-        // ==================== УТИЛИТЫ И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+        let db = null;
+        let userId = null;
+        let tg = null;
+
+        // ==================== ИНИЦИАЛИЗАЦИЯ ====================
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('DOMContentLoaded - инициализация приложения');
+            
+            // Инициализация Telegram
+            tg = window.Telegram?.WebApp;
+            if (tg) {
+                console.log('Telegram Web App обнаружен');
+                tg.ready();
+                tg.expand();
+                
+                // Настройка темы Telegram
+                applyTelegramTheme();
+                tg.onEvent('themeChanged', applyTelegramTheme);
+                
+                // Кнопка сохранения
+                tg.MainButton.setText('💾 Сохранить в облако');
+                tg.MainButton.onClick(saveToFirebase);
+                tg.MainButton.show();
+                
+                // Кнопка назад
+                if (tg.isVersionAtLeast('6.1')) {
+                    tg.BackButton.show();
+                    tg.BackButton.onClick(() => {
+                        if (document.getElementById('dayModal').style.display === 'flex') {
+                            closeModal();
+                        } else if (window.history.length > 1) {
+                            window.history.back();
+                        } else {
+                            tg.close();
+                        }
+                    });
+                }
+                
+                // Получаем ID пользователя из Telegram
+                userId = tg.initDataUnsafe?.user?.id?.toString() || 'anonymous';
+            } else {
+                console.log('Telegram Web App не обнаружен, работаем в браузерном режиме');
+                userId = localStorage.getItem('workshift_user_id') || `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                localStorage.setItem('workshift_user_id', userId);
+            }
+            
+            // Инициализация Firebase
+            await initFirebase();
+            
+            // Загрузка данных
+            await loadData();
+            
+            // Инициализация интерфейса
+            initializeUI();
+            
+            // Устанавливаем текущую дату
+            document.getElementById('taskDate').value = formatDate(new Date());
+            
+            console.log('Приложение инициализировано для пользователя:', userId);
+            showNotification('✅ WorkShift Manager готов!', 'success', 3000);
+        });
+
+        function applyTelegramTheme() {
+            if (!tg) return;
+            
+            const theme = tg.themeParams;
+            if (!theme) return;
+            
+            // Обновляем CSS переменные
+            if (theme.bg_color) {
+                document.documentElement.style.setProperty('--bg-primary', theme.bg_color);
+                document.body.style.backgroundColor = theme.bg_color;
+            }
+            if (theme.secondary_bg_color) {
+                document.documentElement.style.setProperty('--bg-card', theme.secondary_bg_color);
+            }
+            if (theme.text_color) {
+                document.documentElement.style.setProperty('--text', theme.text_color);
+            }
+            if (theme.hint_color) {
+                document.documentElement.style.setProperty('--text-muted', theme.hint_color);
+            }
+            if (theme.link_color) {
+                document.documentElement.style.setProperty('--accent', theme.link_color);
+            }
+            if (theme.button_color) {
+                document.documentElement.style.setProperty('--accent', theme.button_color);
+            }
+        }
+
+        async function initFirebase() {
+            try {
+                const firebaseConfig = {
+                    apiKey: "AIzaSyBWS0WhhmQ1xOCF1iusA-Wqcd_9lr0iGsU",
+                    authDomain: "workshift-manager.firebaseapp.com",
+                    projectId: "workshift-manager",
+                    storageBucket: "workshift-manager.appspot.com",
+                    messagingSenderId: "930769171216",
+                    appId: "1:930769171216:web:849d42d2b520682feceb95"
+                };
+                
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                console.log('Firebase инициализирован');
+            } catch (error) {
+                console.error('Ошибка инициализации Firebase:', error);
+                db = null;
+            }
+        }
+
+        // ==================== РАБОТА С ДАННЫМИ ====================
+        async function saveToFirebase() {
+            if (!db) {
+                showNotification('❌ Облачное хранилище недоступно', 'error');
+                saveToLocalStorage();
+                return;
+            }
+            
+            try {
+                if (tg) {
+                    tg.MainButton.showProgress();
+                    tg.MainButton.setText('💾 Сохраняем...');
+                }
+                
+                const dataToSave = {
+                    employees,
+                    schedules,
+                    tasks,
+                    settings,
+                    lastUpdate: new Date().toISOString(),
+                    telegramUser: tg?.initDataUnsafe?.user || null
+                };
+                
+                await db.collection('users').doc(userId).set(dataToSave, { merge: true });
+                
+                showNotification('✅ Данные сохранены в облаке', 'success');
+                
+                if (tg) {
+                    tg.HapticFeedback.impactOccurred('light');
+                    tg.MainButton.setText('✅ Сохранено');
+                    setTimeout(() => {
+                        tg.MainButton.setText('💾 Сохранить в облако');
+                    }, 2000);
+                }
+                
+                // Также сохраняем локально
+                saveToLocalStorage();
+                
+            } catch (error) {
+                console.error('Ошибка сохранения в Firebase:', error);
+                showNotification('❌ Ошибка сохранения в облако', 'error');
+                saveToLocalStorage();
+            } finally {
+                if (tg) {
+                    tg.MainButton.hideProgress();
+                }
+            }
+        }
+
+        async function loadData() {
+            // Сначала пробуем загрузить из Firebase
+            const firebaseLoaded = await loadFromFirebase();
+            
+            if (!firebaseLoaded) {
+                // Если не удалось, загружаем из localStorage
+                loadFromLocalStorage();
+                
+                // Если есть данные в localStorage, пробуем сохранить их в Firebase
+                if (Object.keys(employees).length > 0 && db) {
+                    setTimeout(() => saveToFirebase(), 1000);
+                }
+            }
+            
+            // Если данных нет вообще, создаем демо
+            if (Object.keys(employees).length === 0) {
+                createDemoData();
+                saveToLocalStorage();
+            }
+        }
+
+        async function loadFromFirebase() {
+            if (!db) return false;
+            
+            try {
+                const doc = await db.collection('users').doc(userId).get();
+                
+                if (doc.exists) {
+                    const data = doc.data();
+                    employees = data.employees || {};
+                    schedules = data.schedules || {};
+                    tasks = data.tasks || {};
+                    settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+                    
+                    console.log('Данные загружены из Firebase');
+                    showNotification('✅ Данные загружены из облака', 'success');
+                    return true;
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки из Firebase:', error);
+            }
+            
+            return false;
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const employeesData = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
+                const schedulesData = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
+                const tasksData = localStorage.getItem(STORAGE_KEYS.TASKS);
+                const settingsData = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+                
+                if (employeesData) employees = JSON.parse(employeesData);
+                if (schedulesData) schedules = JSON.parse(schedulesData);
+                if (tasksData) tasks = JSON.parse(tasksData);
+                if (settingsData) settings = { ...DEFAULT_SETTINGS, ...JSON.parse(settingsData) };
+                
+                console.log('Данные загружены из localStorage');
+            } catch (error) {
+                console.error('Ошибка загрузки из localStorage:', error);
+                employees = {};
+                schedules = {};
+                tasks = {};
+                settings = { ...DEFAULT_SETTINGS };
+            }
+        }
+
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
+                localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+                localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+                localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+            } catch (error) {
+                console.error('Ошибка сохранения в localStorage:', error);
+            }
+        }
+
+        function scheduleAutoSave() {
+            saveToLocalStorage();
+            if (db) {
+                saveToFirebase();
+            }
+        }
+
+        // ==================== ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ====================
+        function initializeUI() {
+            // Назначаем обработчики событий
+            document.getElementById('employeeSelect').addEventListener('change', function(e) {
+                currentEmployeeId = e.target.value;
+                renderPersonalCalendar();
+            });
+
+            document.getElementById('taskEmployee').addEventListener('change', renderTasks);
+            document.getElementById('taskDate').addEventListener('change', renderTasks);
+            
+            // Закрытие модального окна
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('dayModal');
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+            
+            // Обновляем интерфейс
+            updateEmployeeUI();
+            updateTaskSelect();
+            renderPersonalCalendar();
+            renderGeneralCalendar();
+            renderEmployeeDashboard();
+            renderTasks();
+        }
+
+        // ==================== УТИЛИТЫ ====================
         function showNotification(message, type = 'info', duration = 3000) {
             const notification = document.getElementById('notification');
             const text = document.getElementById('notificationText');
             
+            if (!notification) {
+                console.log(message);
+                return;
+            }
+            
             notification.className = `notification notification-${type}`;
             text.textContent = message;
             notification.classList.add('show');
+            
+            // Вибрация в Telegram
+            if (tg && type === 'success') {
+                tg.HapticFeedback.impactOccurred('light');
+            }
             
             setTimeout(() => {
                 notification.classList.remove('show');
@@ -1429,7 +1701,10 @@
         }
 
         function formatDate(date) {
-            return date.toISOString().split('T')[0];
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         }
 
         function formatCurrency(amount) {
@@ -1441,22 +1716,15 @@
         }
 
         function generateId() {
-            return Date.now().toString(36) + Math.random().toString(36).substr(2);
-        }
-
-        function getEmployeeIdByName(name) {
-            const employee = Object.values(employees).find(emp => emp.name === name);
-            return employee ? employee.id : null;
+            return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
         }
 
         function getEmployeeNameById(id) {
-            const employee = Object.values(employees).find(emp => emp.id === id);
-            return employee ? employee.name : 'Неизвестный сотрудник';
+            return employees[id]?.name || 'Неизвестный сотрудник';
         }
 
         function getEmployeeColor(id) {
-            const employee = Object.values(employees).find(emp => emp.id === id);
-            return employee ? employee.color : '#6e7681';
+            return employees[id]?.color || '#6e7681';
         }
 
         function parseDateString(dateStr) {
@@ -1464,89 +1732,7 @@
             return new Date(year, month - 1, day);
         }
 
-        // ==================== РАБОТА С LOCALSTORAGE ====================
-      //  function loadData() {
-        //    try {
-                // Загрузка сотрудников
-         //       const employeesData = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
-          //      if (employeesData) {
-            //        const parsed = JSON.parse(employeesData);
-                    // Конвертация старого формата в новый
-              //      employees = {};
-               //     Object.keys(parsed).forEach(key => {
-                 //       if (typeof parsed[key] === 'number') {
-                            // Старый формат: "Имя": 500
-                   //         const employeeId = generateId();
-                     //       employees[employeeId] = {
-                       //         id: employeeId,
-                        //        name: key,
-                         //       rate: parsed[key],
-                          //      color: employeeColors[Object.keys(employees).length % employeeColors.length],
-                           //     createdAt: Date.now()
-                           // };
-                       //} else {
-                            // Новый формат
-                          //  employees[key] = parsed[key];
-                       // }
-                   // });
-                //}
-
-                // Загрузка расписаний
-                const schedulesData = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
-                if (schedulesData) {
-                    schedules = JSON.parse(schedulesData);
-                }
-
-                // Загрузка задач
-                const tasksData = localStorage.getItem(STORAGE_KEYS.TASKS);
-                if (tasksData) {
-                    tasks = JSON.parse(tasksData);
-                }
-
-                // Загрузка настроек
-                const settingsData = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-                if (settingsData) {
-                    settings = { ...settings, ...JSON.parse(settingsData) };
-                }
-
-                // Если нет сотрудников, создаем демо-данные
-                if (Object.keys(employees).length === 0) {
-                    createDemoData();
-                }
-
-                // Инициализация интерфейса
-                updateEmployeeUI();
-                updateTaskSelect();
-                renderPersonalCalendar();
-                renderGeneralCalendar();
-                renderEmployeeDashboard();
-
-                showNotification('Данные успешно загружены', 'success');
-            } catch (error) {
-                console.error('Ошибка загрузки данных:', error);
-                showNotification('Ошибка загрузки данных', 'error');
-                
-                // Создаем пустые данные при ошибке
-                employees = {};
-                schedules = {};
-                tasks = {};
-                createDemoData();
-                saveData();
-            }
-        }
-
-       // function saveData() {
-           // try {
-             //   localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
-              //  localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
-               // localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
-               // localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-            //} catch (error) {
-             //   console.error('Ошибка сохранения данных:', error);
-              //  showNotification('Ошибка сохранения данных. Проверьте доступное место.', 'error');
-            //}
-        //}
-
+        // ==================== ДЕМО ДАННЫЕ ====================
         function createDemoData() {
             const demoEmployees = [
                 { name: 'Иванов Иван Иванович', rate: 500 },
@@ -1608,7 +1794,7 @@
                 ];
             });
 
-            showNotification('Демо-данные созданы', 'info');
+            console.log('Демо-данные созданы');
         }
 
         // ==================== УПРАВЛЕНИЕ СОТРУДНИКАМИ ====================
@@ -1651,7 +1837,8 @@
             
             schedules[employeeId] = {};
             
-            saveData();
+            // Сохраняем и обновляем интерфейс
+            scheduleAutoSave();
             updateEmployeeUI();
             updateTaskSelect();
             
@@ -1677,7 +1864,7 @@
                 select.appendChild(option);
             });
             
-            // Установка текущего сотрудника, если не выбран
+            // Установка текущего сотрудника
             if (currentEmployeeId && employees[currentEmployeeId]) {
                 select.value = currentEmployeeId;
             } else if (Object.keys(employees).length > 0) {
@@ -1737,7 +1924,7 @@
                 return;
             }
             
-            // Проверка на дубликат (кроме текущего сотрудника)
+            // Проверка на дубликат
             const isDuplicate = Object.values(employees).some(emp => 
                 emp.id !== employeeId && emp.name.toLowerCase() === newName.toLowerCase()
             );
@@ -1750,7 +1937,7 @@
             employee.name = newName.trim();
             employee.rate = rate;
             
-            saveData();
+            scheduleAutoSave();
             updateEmployeeUI();
             updateTaskSelect();
             renderPersonalCalendar();
@@ -1779,13 +1966,13 @@
                 }
             });
             
-            // Обновление текущего сотрудника, если он был удален
+            // Обновление текущего сотрудника
             if (currentEmployeeId === employeeId) {
                 const remainingIds = Object.keys(employees);
                 currentEmployeeId = remainingIds.length > 0 ? remainingIds[0] : null;
             }
             
-            saveData();
+            scheduleAutoSave();
             updateEmployeeUI();
             updateTaskSelect();
             renderPersonalCalendar();
@@ -1795,7 +1982,7 @@
             showNotification(`Сотрудник "${employee.name}" удален`, 'success');
         }
 
-        // ==================== КАЛЕНДАРИ И ГРАФИКИ ====================
+        // ==================== КАЛЕНДАРЬ ====================
         function getMonthDays(year, month) {
             const firstDay = new Date(year, month, 1);
             const lastDay = new Date(year, month + 1, 0);
@@ -1803,7 +1990,7 @@
             // Начало недели (понедельник)
             const startDay = new Date(firstDay);
             const dayOfWeek = startDay.getDay();
-            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Если воскресенье, то 6 дней назад
+            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
             startDay.setDate(startDay.getDate() - diff);
             
             return { firstDay, lastDay, startDay };
@@ -2014,10 +2201,8 @@
                 shiftNotes = notesInput.value.trim();
                 
                 if (shiftHours <= 0) {
-                    // Если часы = 0, удаляем смену
                     delete schedules[currentEmployeeId][dateStr];
                 } else {
-                    // Сохраняем смену
                     if (!schedules[currentEmployeeId]) {
                         schedules[currentEmployeeId] = {};
                     }
@@ -2030,7 +2215,7 @@
                     };
                 }
                 
-                saveData();
+                scheduleAutoSave();
                 renderPersonalCalendar();
                 renderGeneralCalendar();
                 renderEmployeeDashboard();
@@ -2045,7 +2230,7 @@
                         delete schedules[currentEmployeeId][dateStr];
                     }
                     
-                    saveData();
+                    scheduleAutoSave();
                     renderPersonalCalendar();
                     renderGeneralCalendar();
                     renderEmployeeDashboard();
@@ -2238,7 +2423,7 @@
             });
         }
 
-        // ==================== МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ДНЯ ====================
+        // ==================== МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ====================
         function showDayDetail(dateStr) {
             const date = parseDateString(dateStr);
             const formattedDate = date.toLocaleDateString('ru-RU', { 
@@ -2323,7 +2508,11 @@
                         </div>
                         ` : ''}
                         <div style="margin-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
-                            <i class="fas fa-calendar"></i> ${new Date(task.createdAt).toLocaleDateString('ru-RU')}
+                            <i class="fas fa-calendar"></i> Создано: ${new Date(task.createdAt).toLocaleDateString('ru-RU')}
+                            ${task.updatedAt !== task.createdAt ? 
+                                `<br><i class="fas fa-edit"></i> Обновлено: ${new Date(task.updatedAt).toLocaleDateString('ru-RU')}` : 
+                                ''
+                            }
                         </div>
                     `;
                     
@@ -2379,7 +2568,7 @@
             document.getElementById('dayModal').style.display = 'none';
         }
 
-        // ==================== УПРАВЛЕНИЕ ЗАДАЧАМИ ====================
+        // ==================== ЗАДАЧИ ====================
         function updateTaskSelect() {
             const select = document.getElementById('taskEmployee');
             select.innerHTML = '<option value="">— Выберите сотрудника —</option>';
@@ -2420,7 +2609,7 @@
                 updatedAt: Date.now()
             });
             
-            saveData();
+            scheduleAutoSave();
             renderTasks();
             renderGeneralCalendar();
             
@@ -2514,7 +2703,7 @@
             if (tasks[taskKey] && tasks[taskKey][index]) {
                 tasks[taskKey][index].report = report;
                 tasks[taskKey][index].updatedAt = Date.now();
-                saveData();
+                scheduleAutoSave();
                 renderGeneralCalendar();
             }
         }
@@ -2524,7 +2713,7 @@
             if (tasks[taskKey] && tasks[taskKey][index]) {
                 tasks[taskKey][index].completed = !tasks[taskKey][index].completed;
                 tasks[taskKey][index].updatedAt = Date.now();
-                saveData();
+                scheduleAutoSave();
                 renderTasks();
                 renderGeneralCalendar();
                 
@@ -2542,14 +2731,14 @@
                 if (tasks[taskKey].length === 0) {
                     delete tasks[taskKey];
                 }
-                saveData();
+                scheduleAutoSave();
                 renderTasks();
                 renderGeneralCalendar();
                 showNotification('Задача удалена', 'success');
             }
         }
 
-        // ==================== НАВИГАЦИЯ И УПРАВЛЕНИЕ ====================
+        // ==================== НАВИГАЦИЯ ====================
         function prevMonth(general = false) {
             currentDate.setMonth(currentDate.getMonth() - 1);
             general ? renderGeneralCalendar() : renderPersonalCalendar();
@@ -2592,12 +2781,10 @@
                 renderEmployeeDashboard();
             } else if (tabId === 'tasks') {
                 renderTasks();
-            } else if (tabId === 'settings') {
-                // Загрузка настроек
             }
         }
 
-        // ==================== ИМПОРТ/ЭКСПОРТ И НАСТРОЙКИ ====================
+        // ==================== ЭКСПОРТ/ИМПОРТ ====================
         function exportData() {
             const data = {
                 employees: employees,
@@ -2605,7 +2792,7 @@
                 tasks: tasks,
                 settings: settings,
                 exportDate: new Date().toISOString(),
-                version: '2.0'
+                version: '3.0'
             };
             
             const dataStr = JSON.stringify(data, null, 2);
@@ -2622,7 +2809,6 @@
         }
 
         function exportToCSV() {
-            // Экспорт сотрудников
             let csv = 'Сотрудники\n';
             csv += 'ID,ФИО,Ставка (₽/ч),Цвет\n';
             
@@ -2673,24 +2859,21 @@
                 try {
                     const data = JSON.parse(e.target.result);
                     
-                    // Проверка версии и структуры данных
                     if (!data.employees || !data.schedules || !data.tasks) {
                         throw new Error('Некорректный формат файла');
                     }
                     
-                    // Подтверждение импорта
                     if (!confirm(`Импортировать данные? Это перезапишет текущие данные.`)) {
                         return;
                     }
                     
-                    // Импорт данных
                     employees = data.employees;
                     schedules = data.schedules;
                     tasks = data.tasks;
                     if (data.settings) settings = data.settings;
                     
-                    saveData();
-                    loadData();
+                    scheduleAutoSave();
+                    initializeUI();
                     
                     showNotification('Данные успешно импортированы', 'success');
                     fileInput.value = '';
@@ -2735,8 +2918,8 @@
                 tasks = backup.tasks;
                 settings = backup.settings;
                 
-                saveData();
-                loadData();
+                scheduleAutoSave();
+                initializeUI();
                 
                 showNotification('Данные восстановлены из резервной копии', 'success');
             } catch (error) {
@@ -2764,133 +2947,15 @@
                 localStorage.removeItem(key);
             });
             
-            loadData();
+            // Очищаем Firebase если есть
+            if (db) {
+                db.collection('users').doc(userId).delete().catch(() => {});
+            }
+            
+            createDemoData();
+            initializeUI();
             showNotification('Все данные удалены', 'success');
         }
-
-               // ==================== ИНИЦИАЛИЗАЦИЯ (ВСЁ В ОДНОМ МЕСТЕ) ====================
-        document.addEventListener('DOMContentLoaded', async function() {
-            // Установка текущей даты в поле выбора даты
-            const today = new Date();
-            document.getElementById('taskDate').value = formatDate(today);
-
-            // Обработчики событий
-            document.getElementById('employeeSelect').addEventListener('change', function(e) {
-                currentEmployeeId = e.target.value;
-                renderPersonalCalendar();
-            });
-
-            document.getElementById('taskEmployee').addEventListener('change', renderTasks);
-            document.getElementById('taskDate').addEventListener('change', renderTasks);
-
-            // Закрытие модального окна при клике вне его
-            window.addEventListener('click', function(event) {
-                const modal = document.getElementById('dayModal');
-                if (event.target === modal) {
-                    closeModal();
-                }
-            });
-
-            // Загрузка данных из облака (или локальных)
-            await loadData();
-
-            // Показ приветственного сообщения
-            setTimeout(() => {
-                showNotification('WorkShift Manager готов! Данные в облаке ☁️', 'success', 5000);
-            }, 1000);
-        });
-
-        // ==================== ИНТЕГРАЦИЯ С TELEGRAM ====================
-        const tg = window.Telegram?.WebApp;
-        if (tg) {
-            tg.ready();
-            tg.expand();
-
-            // Адаптация темы
-            function applyTheme() {
-                const theme = tg.themeParams;
-                if (theme) {
-                    document.documentElement.style.setProperty('--bg-primary', theme.bg_color || '#0d1117');
-                    document.documentElement.style.setProperty('--bg-card', theme.secondary_bg_color || '#161b22');
-                    document.documentElement.style.setProperty('--text', theme.text_color || '#c9d1d9');
-                    document.documentElement.style.setProperty('--accent', theme.link_color || '#58a6ff');
-                }
-            }
-            applyTheme();
-            tg.onEvent('themeChanged', applyTheme);
-
-            // Кнопка "Сохранить" внизу
-            tg.MainButton.setText('Сохранить изменения');
-            tg.MainButton.show();
-            tg.MainButton.onClick(() => {
-                saveData();
-                showNotification('Изменения сохранены в облаке ☁️', 'success');
-            });
-
-            tg.BackButton.show();
-            tg.onEvent('backButtonClicked', () => tg.close());
-        }
-
-        // ==================== FIREBASE ====================
-        const firebaseConfig = {
-            apiKey: "AIzaSyBWS0WhhmQ1xOCF1iusA-Wqcd_9lr0iGsU",
-            authDomain: "workshift-manager.firebaseapp.com",
-            projectId: "workshift-manager",
-            storageBucket: "workshift-manager.appspot.com",
-            messagingSenderId: "930769171216",
-            appId: "1:930769171216:web:849d42d2b520682feceb95"
-        };
-
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-
-        let userId = 'anonymous';
-        if (tg && tg.initDataUnsafe?.user?.id) {
-            userId = tg.initDataUnsafe.user.id.toString();
-        }
-
-        async function saveData() {
-            try {
-                await db.collection('users').doc(userId).set({
-                    employees: employees,
-                    schedules: schedules,
-                    tasks: tasks,
-                    settings: settings,
-                    lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                showNotification('Данные сохранены в облаке ☁️', 'success');
-            } catch (error) {
-                console.error('Ошибка сохранения:', error);
-                showNotification('Ошибка сети — данные сохранены локально', 'danger');
-            }
-        }
-
-        async function loadData() {
-            try {
-                const doc = await db.collection('users').doc(userId).get();
-                if (doc.exists) {
-                    const data = doc.data();
-                    employees = data.employees || {};
-                    schedules = data.schedules || {};
-                    tasks = data.tasks || {};
-                    settings = data.settings || { ...DEFAULT_SETTINGS };
-                    showNotification('Данные загружены из облака ☁️', 'success');
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки:', error);
-                showNotification('Оффлайн-режим: используются локальные данные', 'warning');
-            }
-
-            // Обновляем ВЕСЬ интерфейс после загрузки
-            updateEmployeeUI();
-            updateTaskSelect();
-            renderPersonalCalendar();
-            renderGeneralCalendar();
-            renderEmployeeDashboard();
-            renderTasks();
-        }
     </script>
-      
-
 </body>
 </html>
