@@ -2799,111 +2799,137 @@
                 showNotification('WorkShift Manager загружен и готов к работе!', 'success', 4000);
             }, 1000);
         });
-        // Интеграция с Telegram Web App
-const tg = window.Telegram.WebApp;
-tg.ready();  // Инициализация Mini App
-tg.expand();  // Развернуть на полный экран
+           // ==================== ИНТЕГРАЦИЯ С TELEGRAM И FIREBASE ====================
 
-// Адаптация темы (темная/светлая)
-function applyTheme() {
-    const theme = tg.themeParams;
-    if (theme) {
-        document.documentElement.style.setProperty('--bg-primary', theme.bg_color || '#0d1117');
-        document.documentElement.style.setProperty('--bg-card', theme.secondary_bg_color || '#161b22');
-        document.documentElement.style.setProperty('--text', theme.text_color || '#c9d1d9');
-        // Добавьте другие переменные по аналогии, если нужно
-    }
-}
-applyTheme();
-tg.onEvent('themeChanged', applyTheme);  // Обновлять при смене темы
-tg.MainButton.setText('Сохранить изменения');
-tg.MainButton.show();
-tg.MainButton.onClick(function() {
-    saveData();  // Ваша функция сохранения
-    showNotification('Изменения сохранены', 'success');
-});
-tg.onEvent('backButtonClicked', function() {
-    tg.close();  // Закрыть Mini App
-});
-tg.BackButton.show();  // Показать кнопку "Назад"
-        // ==================== ОБЛАЧНОЕ ХРАНИЛИЩЕ (FIREBASE) ====================
+        // Telegram Web App
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
 
-// ←←←←← ВСТАВЬТЕ СЮДА ВАШ СКОПИРОВАННЫЙ КОНФИГ ЦЕЛИКОМ ←←←←←
-const firebaseConfig = {
-  apiKey: AIzaSyBWS0WhhmQ1xOCF1iusA-Wqcd_9lr0iGsU,
-  authDomain: workshift-manager.firebaseapp.com,
-  projectId: workshift-manager,
-  storageBucket: workshift-manager.firebasestorage.app,
-  messagingSenderId:930769171216,
-  appId: :930769171216:web:849d42d2b520682feceb95
-};
-// ←←←←← КОНЕЦ ВСТАВКИ КОНФИГА ←←←←←
+            // Адаптация темы
+            function applyTheme() {
+                const theme = tg.themeParams;
+                if (theme) {
+                    document.documentElement.style.setProperty('--bg-primary', theme.bg_color || '#0d1117');
+                    document.documentElement.style.setProperty('--bg-card', theme.secondary_bg_color || '#161b22');
+                    document.documentElement.style.setProperty('--text', theme.text_color || '#c9d1d9');
+                    document.documentElement.style.setProperty('--accent', theme.link_color || '#58a6ff');
+                }
+            }
+            applyTheme();
+            tg.onEvent('themeChanged', applyTheme);
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+            // Кнопки Telegram
+            tg.MainButton.setText('Сохранить изменения');
+            tg.MainButton.show();
+            tg.MainButton.onClick(() => {
+                saveData();
+                showNotification('Изменения сохранены в облаке ☁️', 'success');
+            });
 
-// Определяем ID пользователя
-let userId = 'anonymous'; // для теста в обычном браузере
-if (window.Telegram && window.Telegram.WebApp) {
-  const tg = window.Telegram.WebApp;
-  tg.ready();
-  tg.expand();
-  if (tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-    userId = tg.initDataUnsafe.user.id.toString();
-  }
-}
+            tg.BackButton.show();
+            tg.onEvent('backButtonClicked', () => tg.close());
+        }
 
-// НОВАЯ ФУНКЦИЯ СОХРАНЕНИЯ В ОБЛАКО
-async function saveData() {
-  try {
-    await db.collection('users').doc(userId).set({
-      employees: employees,
-      schedules: schedules,
-      tasks: tasks,
-      settings: settings,
-      lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    showNotification('Данные сохранены в облаке ☁️', 'success');
-  } catch (error) {
-    console.error('Ошибка сохранения в Firebase:', error);
-    showNotification('Ошибка сохранения в облако', 'danger');
-  }
-}
+        // ==================== FIREBASE ====================
+        const firebaseConfig = {
+            apiKey: "AIzaSyBWS0WhhmQ1xOCF1iusA-Wqcd_9lr0iGsU",
+            authDomain: "workshift-manager.firebaseapp.com",
+            projectId: "workshift-manager",
+            storageBucket: "workshift-manager.appspot.com",
+            messagingSenderId: "930769171216",
+            appId: "1:930769171216:web:849d42d2b520682feceb95"  // ← ИСПРАВЛЕНО: добавлен "1:" и кавычки
+        };
 
-// НОВАЯ ФУНКЦИЯ ЗАГРУЗКИ ИЗ ОБЛАКА
-async function loadData() {
-  try {
-    const doc = await db.collection('users').doc(userId).get();
-    if (doc.exists) {
-      const data = doc.data();
-      employees = data.employees || {};
-      schedules = data.schedules || {};
-      tasks = data.tasks || {};
-      settings = data.settings || { ...DEFAULT_SETTINGS };
-      showNotification('Данные загружены из облака ☁️', 'success');
-    } else {
-      showNotification('Новых данных в облаке нет — используем локальные', 'info');
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки из Firebase:', error);
-    showNotification('Оффлайн-режим (локальные данные)', 'warning');
-  }
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
-  // Обновляем интерфейс после загрузки
-  renderGeneralCalendar();
-  renderEmployeeDashboard();
-  renderTasks();
-  renderPersonalCalendar();
-}
+        // ID пользователя
+        let userId = 'anonymous';
+        if (tg && tg.initDataUnsafe?.user?.id) {
+            userId = tg.initDataUnsafe.user.id.toString();
+        }
 
-// Автоматическая загрузка при запуске приложения
-document.addEventListener('DOMContentLoaded', async function() {
-  await loadData(); // сначала пытаемся загрузить из облака
-  
-  // Ваш оригинальный код инициализации (он уже есть ниже в файле)
-  // Оставьте всё как было — он выполнится после загрузки данных
-});
-    </script>
+        // === ПЕРЕОПРЕДЕЛЯЕМ saveData И loadData ===
+        async function saveData() {
+            try {
+                await db.collection('users').doc(userId).set({
+                    employees: employees,
+                    schedules: schedules,
+                    tasks: tasks,
+                    settings: settings,
+                    lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                console.log('Данные сохранены в облако');
+            } catch (error) {
+                console.error('Ошибка сохранения:', error);
+                showNotification('Ошибка сохранения в облако', 'danger');
+                // Резервное сохранение в localStorage
+                try {
+                    localStorage.setItem('backup_employees', JSON.stringify(employees));
+                    localStorage.setItem('backup_schedules', JSON.stringify(schedules));
+                    localStorage.setItem('backup_tasks', JSON.stringify(tasks));
+                } catch (e) {}
+            }
+        }
+
+        async function loadData() {
+            try {
+                const doc = await db.collection('users').doc(userId).get();
+                if (doc.exists) {
+                    const data = doc.data();
+                    employees = data.employees || {};
+                    schedules = data.schedules || {};
+                    tasks = data.tasks || {};
+                    settings = data.settings || { ...DEFAULT_SETTINGS };
+                    showNotification('Данные загружены из облака ☁️', 'success');
+                } else {
+                    // Если в облаке пусто — пробуем из localStorage (миграция)
+                    const localEmployees = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
+                    if (localEmployees) {
+                        employees = JSON.parse(localEmployees);
+                        showNotification('Данные загружены из локального хранилища', 'info');
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки из облака:', error);
+                showNotification('Оффлайн: используются локальные данные', 'warning');
+            }
+
+            // Обновляем интерфейс
+            updateEmployeeUI();
+            updateTaskSelect();
+            renderPersonalCalendar();
+            renderGeneralCalendar();
+            renderEmployeeDashboard();
+            renderTasks();
+        }
+
+        // === ЗАГРУЗКА ПРИ СТАРТЕ ===
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Установка текущей даты
+            document.getElementById('taskDate').value = formatDate(new Date());
+
+            // Обработчики
+            document.getElementById('employeeSelect').addEventListener('change', e => {
+                currentEmployeeId = e.target.value;
+                renderPersonalCalendar();
+            });
+            document.getElementById('taskEmployee').addEventListener('change', renderTasks);
+            document.getElementById('taskDate').addEventListener('change', renderTasks);
+
+            window.addEventListener('click', e => {
+                const modal = document.getElementById('dayModal');
+                if (e.target === modal) closeModal();
+            });
+
+            // Загружаем данные из облака
+            await loadData();
+
+            showNotification('WorkShift Manager готов! Данные в облаке ☁️', 'success', 4000);
+        });
+       </script>
 
 </body>
 </html>
