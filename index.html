@@ -2768,21 +2768,21 @@
             showNotification('Все данные удалены', 'success');
         }
 
-        // ==================== ИНИЦИАЛИЗАЦИЯ ====================
-        document.addEventListener('DOMContentLoaded', function() {
+               // ==================== ИНИЦИАЛИЗАЦИЯ (ВСЁ В ОДНОМ МЕСТЕ) ====================
+        document.addEventListener('DOMContentLoaded', async function() {
             // Установка текущей даты в поле выбора даты
             const today = new Date();
             document.getElementById('taskDate').value = formatDate(today);
-            
+
             // Обработчики событий
             document.getElementById('employeeSelect').addEventListener('change', function(e) {
                 currentEmployeeId = e.target.value;
                 renderPersonalCalendar();
             });
-            
+
             document.getElementById('taskEmployee').addEventListener('change', renderTasks);
             document.getElementById('taskDate').addEventListener('change', renderTasks);
-            
+
             // Закрытие модального окна при клике вне его
             window.addEventListener('click', function(event) {
                 const modal = document.getElementById('dayModal');
@@ -2790,18 +2790,17 @@
                     closeModal();
                 }
             });
-            
-            // Загрузка данных
-            loadData();
-            
+
+            // Загрузка данных из облака (или локальных)
+            await loadData();
+
             // Показ приветственного сообщения
             setTimeout(() => {
-                showNotification('WorkShift Manager загружен и готов к работе!', 'success', 4000);
+                showNotification('WorkShift Manager готов! Данные в облаке ☁️', 'success', 5000);
             }, 1000);
         });
-           // ==================== ИНТЕГРАЦИЯ С TELEGRAM И FIREBASE ====================
 
-        // Telegram Web App
+        // ==================== ИНТЕГРАЦИЯ С TELEGRAM ====================
         const tg = window.Telegram?.WebApp;
         if (tg) {
             tg.ready();
@@ -2820,7 +2819,7 @@
             applyTheme();
             tg.onEvent('themeChanged', applyTheme);
 
-            // Кнопки Telegram
+            // Кнопка "Сохранить" внизу
             tg.MainButton.setText('Сохранить изменения');
             tg.MainButton.show();
             tg.MainButton.onClick(() => {
@@ -2839,19 +2838,17 @@
             projectId: "workshift-manager",
             storageBucket: "workshift-manager.appspot.com",
             messagingSenderId: "930769171216",
-            appId: "1:930769171216:web:849d42d2b520682feceb95"  // ← ИСПРАВЛЕНО: добавлен "1:" и кавычки
+            appId: "1:930769171216:web:849d42d2b520682feceb95"
         };
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // ID пользователя
         let userId = 'anonymous';
         if (tg && tg.initDataUnsafe?.user?.id) {
             userId = tg.initDataUnsafe.user.id.toString();
         }
 
-        // === ПЕРЕОПРЕДЕЛЯЕМ saveData И loadData ===
         async function saveData() {
             try {
                 await db.collection('users').doc(userId).set({
@@ -2861,16 +2858,10 @@
                     settings: settings,
                     lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
-                console.log('Данные сохранены в облако');
+                showNotification('Данные сохранены в облаке ☁️', 'success');
             } catch (error) {
                 console.error('Ошибка сохранения:', error);
-                showNotification('Ошибка сохранения в облако', 'danger');
-                // Резервное сохранение в localStorage
-                try {
-                    localStorage.setItem('backup_employees', JSON.stringify(employees));
-                    localStorage.setItem('backup_schedules', JSON.stringify(schedules));
-                    localStorage.setItem('backup_tasks', JSON.stringify(tasks));
-                } catch (e) {}
+                showNotification('Ошибка сети — данные сохранены локально', 'danger');
             }
         }
 
@@ -2884,20 +2875,13 @@
                     tasks = data.tasks || {};
                     settings = data.settings || { ...DEFAULT_SETTINGS };
                     showNotification('Данные загружены из облака ☁️', 'success');
-                } else {
-                    // Если в облаке пусто — пробуем из localStorage (миграция)
-                    const localEmployees = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
-                    if (localEmployees) {
-                        employees = JSON.parse(localEmployees);
-                        showNotification('Данные загружены из локального хранилища', 'info');
-                    }
                 }
             } catch (error) {
-                console.error('Ошибка загрузки из облака:', error);
-                showNotification('Оффлайн: используются локальные данные', 'warning');
+                console.error('Ошибка загрузки:', error);
+                showNotification('Оффлайн-режим: используются локальные данные', 'warning');
             }
 
-            // Обновляем интерфейс
+            // Обновляем ВЕСЬ интерфейс после загрузки
             updateEmployeeUI();
             updateTaskSelect();
             renderPersonalCalendar();
@@ -2905,31 +2889,8 @@
             renderEmployeeDashboard();
             renderTasks();
         }
-
-        // === ЗАГРУЗКА ПРИ СТАРТЕ ===
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Установка текущей даты
-            document.getElementById('taskDate').value = formatDate(new Date());
-
-            // Обработчики
-            document.getElementById('employeeSelect').addEventListener('change', e => {
-                currentEmployeeId = e.target.value;
-                renderPersonalCalendar();
-            });
-            document.getElementById('taskEmployee').addEventListener('change', renderTasks);
-            document.getElementById('taskDate').addEventListener('change', renderTasks);
-
-            window.addEventListener('click', e => {
-                const modal = document.getElementById('dayModal');
-                if (e.target === modal) closeModal();
-            });
-
-            // Загружаем данные из облака
-            await loadData();
-
-            showNotification('WorkShift Manager готов! Данные в облаке ☁️', 'success', 4000);
-        });
-       </script>
+    </script>
+      
 
 </body>
 </html>
